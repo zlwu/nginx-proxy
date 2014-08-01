@@ -1,3 +1,9 @@
+# inactive = 1440m -> data which is not accessed within one day gets kicked out
+# max_size = 500m -> 500 MB of files tops
+# 128MB memory for querycache keys
+proxy_cache_path /var/cache/nginx/cache/ levels=1:2 keys_zone=querycache:128m max_size=500m inactive=1440m;
+proxy_temp_path /var/cache/nginx/tmp;
+
 server {
 	listen 80 default_server;
 	server_name _; # This is just an invalid value which will never trigger on a real hostname.
@@ -38,23 +44,39 @@ upstream {{ $host }} {
 		{{ end }}
 	{{ end }}
 {{ end }}
+           keepalive 16;
 }
 
 server {
 	gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript;
 
 	server_name {{ $host }};
-	proxy_buffering off;
+	#proxy_buffering off;
 	error_log /proc/self/fd/2;
 	access_log /proc/self/fd/1;
 
 	location / {
 		proxy_pass http://{{ $host }};
-		include /etc/nginx/proxy_params;
+		#include /etc/nginx/proxy_params;
 
 		# HTTP 1.1 support
 		proxy_http_version 1.1;
 		proxy_set_header Connection "";
+
+        # Clean cookies.
+        proxy_set_header cookie "";
+
+        # Remove the session cookie we might get. Since we cache the response, this
+        # would hand out the same session to many users.
+        proxy_hide_header Set-Cookie;
+
+        proxy_cache querycache;
+
+        # Force caching, even though Set-Cookie, Expires and Cache-Control are set.
+        proxy_ignore_headers Set-Cookie Expires Cache-Control;
+
+        # cache HTTP/200 requests for 1 minutes.
+        proxy_cache_valid 200 1m;
 	}
 }
 {{ end }}
